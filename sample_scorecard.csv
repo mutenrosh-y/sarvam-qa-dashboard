@@ -1,0 +1,5 @@
+category,criteria,description
+Empathy,Politeness,Did the agent use polite language (please, thank you)?
+Empathy,Active Listening,Did the agent acknowledge the customer's problem?
+Resolution,Solution Offered,Was a valid solution provided?
+Compliance,Closing,Did the agent ask if there was anything else?

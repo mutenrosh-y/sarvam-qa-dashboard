@@ -1,0 +1,5 @@
+sarvamai
+pydub
+static-ffmpeg
+python-dotenv
+pytest
