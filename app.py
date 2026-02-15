@@ -75,8 +75,8 @@ audio_file = st.sidebar.file_uploader(
 # Scorecard Upload
 st.sidebar.subheader("📊 Upload Scorecard")
 
-# Download Template Button
-sample_csv = "Criterion,Description,Max Score\nGreeting,Did the agent greet?,5\nEmpathy,Did the agent show empathy?,5"
+# Download Template Button with advanced scorecard format
+sample_csv = "Mode,Section,Criterion,Description,Rating Logic,Max Score\nAI,Greeting,Professionalism,Did the agent introduce themselves?,Agent greets with name and company,5\nAI,Resolution,Accuracy,Was the correct solution provided?,Solution matches customer need,5"
 st.sidebar.download_button(
     "📥 Download Template",
     sample_csv,
@@ -87,7 +87,7 @@ st.sidebar.download_button(
 scorecard_file = st.sidebar.file_uploader(
     "Select a scorecard file (CSV, XLSX, XLS)",
     type=["csv", "xlsx", "xls"],
-    help="CSV or Excel with columns: criterion, criteria, question, or item"
+    help="CSV or Excel with columns: Mode, Section, Criterion, Description, Rating Logic, Max Score"
 )
 
 if scorecard_file is not None:
@@ -101,19 +101,38 @@ if scorecard_file is not None:
         # Normalize column names: strip whitespace and convert to lowercase
         scorecard_df.columns = scorecard_df.columns.str.strip().str.lower()
         
-        # Check for criterion/criteria/question/item columns (case-insensitive)
-        valid_columns = {"criterion", "criteria", "question", "item"}
-        found_column = None
-        for col in scorecard_df.columns:
-            if col in valid_columns:
-                found_column = col
-                break
+        # Define required columns for advanced scorecard
+        required_columns = {"criterion", "description"}
+        optional_columns = {"mode", "section", "rating logic", "max score"}
         
-        if found_column:
-            st.session_state.scorecard_criteria = scorecard_df[found_column].tolist()
-            st.sidebar.success(f"✅ Loaded {len(st.session_state.scorecard_criteria)} criteria from '{found_column}' column")
+        # Check if required columns exist
+        found_required = all(col in scorecard_df.columns for col in required_columns)
+        
+        if found_required:
+            # Convert dataframe to list of dictionaries with proper structure
+            scorecard_list = []
+            for idx, row in scorecard_df.iterrows():
+                criterion_dict = {
+                    "name": str(row.get("criterion", f"Criterion {idx+1}")).strip(),
+                    "description": str(row.get("description", "")).strip(),
+                    "logic": str(row.get("rating logic", "")).strip(),
+                    "max_score": int(row.get("max score", 5)) if pd.notna(row.get("max score")) else 5,
+                }
+                # Add optional fields if present
+                if "mode" in scorecard_df.columns and pd.notna(row.get("mode")):
+                    criterion_dict["mode"] = str(row.get("mode", "AI")).strip()
+                else:
+                    criterion_dict["mode"] = "AI"  # Default mode
+                
+                if "section" in scorecard_df.columns and pd.notna(row.get("section")):
+                    criterion_dict["section"] = str(row.get("section", "")).strip()
+                
+                scorecard_list.append(criterion_dict)
+            
+            st.session_state.scorecard_criteria = scorecard_list
+            st.sidebar.success(f"✅ Loaded {len(st.session_state.scorecard_criteria)} criteria")
         else:
-            st.sidebar.error(f"❌ File must have one of these columns: {', '.join(valid_columns)}")
+            st.sidebar.error(f"❌ File must have columns: {', '.join(required_columns)}")
     except Exception as e:
         st.sidebar.error(f"❌ Error reading file: {str(e)}")
 
@@ -174,9 +193,11 @@ if process_button:
                         grades_data = {}
                         if st.session_state.scorecard_criteria:
                             st.info("⭐ Grading call...")
+                            # Convert scorecard criteria to list of dictionaries for advanced grading
+                            scorecard_items = st.session_state.scorecard_criteria
                             grading_result = st.session_state.engine.grade_call(
                                 transcript,
-                                st.session_state.scorecard_criteria,
+                                scorecard_items,
                                 output_dir=temp_dir,
                             )
                             

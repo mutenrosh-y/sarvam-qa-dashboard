@@ -75,7 +75,7 @@ SCORECARD CRITERIA:
 {scorecard_items}
 
 For each criterion, provide:
-- Score (1-5): 1=Poor, 2=Below Average, 3=Average, 4=Good, 5=Excellent
+- Score: Must be between 0 and the Max Score specified for that criterion
 - Reasoning: Brief explanation for the score
 
 Format your response as JSON with this structure:
@@ -83,7 +83,8 @@ Format your response as JSON with this structure:
   "grades": [
     {{
       "criterion": "criterion name",
-      "score": <1-5>,
+      "score": <numeric score>,
+      "max_score": <max score for this criterion>,
       "reasoning": "explanation"
     }},
     ...
@@ -482,20 +483,33 @@ class SarvamEngine:
     def grade_call(
         self,
         transcript: str,
-        scorecard_items: typing.List[str],
+        scorecard_items: typing.List[typing.Dict[str, typing.Any]],
         output_dir: typing.Optional[str] = None,
     ) -> typing.Dict[str, typing.Any]:
         """Grade a call based on provided scorecard criteria using LLM.
 
         Uses Sarvam LLM to evaluate the call against each criterion and
-        provide scores (1-5) with reasoning.
+        provide scores with reasoning. Respects max_score constraints.
 
         Parameters
         ----------
         transcript:
             The call transcription text.
         scorecard_items:
-            List of criteria to grade (e.g., ["Agent politeness", "Issue resolution"]).
+            List of dicts with keys:
+            - ``name``: criterion name (required)
+            - ``description``: context for the criterion (optional)
+            - ``logic``: specific scoring rules (optional)
+            - ``max_score``: maximum score for this criterion (required, default 5)
+            Example: [
+                {
+                    "name": "Agent Politeness",
+                    "description": "How courteous and professional was the agent?",
+                    "logic": "Score higher if agent used respectful language throughout",
+                    "max_score": 5
+                },
+                ...
+            ]
         output_dir:
             Optional directory to save grading results.
 
@@ -503,7 +517,7 @@ class SarvamEngine:
         -------
         dict with keys:
             - ``status``: "success" or "failed"
-            - ``grades``: list of grade objects with criterion, score, reasoning
+            - ``grades``: list of grade objects with criterion, score, max_score, reasoning
             - ``overall_score``: average score across all criteria
             - ``summary``: overall assessment
             - ``grading_file``: path to saved grading file (if output_dir provided)
@@ -522,8 +536,24 @@ class SarvamEngine:
                     "error": "No scorecard items provided",
                 }
 
-            # Format scorecard items for the prompt
-            scorecard_text = "\n".join([f"- {item}" for item in scorecard_items])
+            # Format scorecard items for the prompt with full details
+            scorecard_lines = []
+            for item in scorecard_items:
+                name = item.get("name", "Unnamed Criterion")
+                description = item.get("description", "")
+                logic = item.get("logic", "")
+                max_score = item.get("max_score", 5)
+                
+                scorecard_lines.append(f"Item: {name}")
+                if description:
+                    scorecard_lines.append(f"Description: {description}")
+                if logic:
+                    scorecard_lines.append(f"Logic: {logic}")
+                scorecard_lines.append(f"Max Score: {max_score}")
+                scorecard_lines.append(f"Score this item (0-{max_score}):")
+                scorecard_lines.append("")
+            
+            scorecard_text = "\n".join(scorecard_lines)
 
             prompt_content = GRADING_PROMPT_TEMPLATE.format(
                 transcription=transcript,
@@ -536,6 +566,7 @@ class SarvamEngine:
                     "content": (
                         "You are an expert call quality evaluator. "
                         "Grade calls objectively based on the provided criteria. "
+                        "Always respect the Max Score constraint for each criterion. "
                         "Always respond with valid JSON."
                     ),
                 },
@@ -564,9 +595,31 @@ class SarvamEngine:
                 else:
                     raise ValueError("Could not parse grading response as JSON")
 
+            # Validate and enforce max_score constraints on grades
+            grades = grading_result.get("grades", [])
+            for i, grade in enumerate(grades):
+                # Find corresponding scorecard item to get max_score
+                criterion_name = grade.get("criterion", "")
+                max_score = 5  # default
+                for item in scorecard_items:
+                    if item.get("name", "") == criterion_name:
+                        max_score = item.get("max_score", 5)
+                        break
+                
+                # Ensure score respects max_score constraint
+                score = grade.get("score", 0)
+                if score > max_score:
+                    grade["score"] = max_score
+                if score < 0:
+                    grade["score"] = 0
+                
+                # Add max_score to grade object
+                grade["max_score"] = max_score
+                grades[i] = grade
+
             result = {
                 "status": "success",
-                "grades": grading_result.get("grades", []),
+                "grades": grades,
                 "overall_score": grading_result.get("overall_score", 0),
                 "summary": grading_result.get("summary", ""),
             }
