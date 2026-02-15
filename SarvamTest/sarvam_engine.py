@@ -17,8 +17,8 @@ import textwrap
 from datetime import datetime
 
 # Initialize static_ffmpeg BEFORE importing pydub so pydub finds ffmpeg/ffprobe
-import static_ffmpeg
-static_ffmpeg.add_paths()
+# import static_ffmpeg
+# static_ffmpeg.add_paths()
 
 from pydub import AudioSegment  # noqa: E402
 from sarvamai import SarvamAI  # noqa: E402

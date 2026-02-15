@@ -4,4 +4,5 @@ python-dotenv
 requests
 pydub
 sarvamai
-static-ffmpeg
+
+
