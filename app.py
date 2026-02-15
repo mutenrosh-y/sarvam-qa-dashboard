@@ -73,23 +73,49 @@ audio_file = st.sidebar.file_uploader(
 )
 
 # Scorecard Upload
-st.sidebar.subheader("📊 Upload Scorecard (CSV)")
+st.sidebar.subheader("📊 Upload Scorecard")
+
+# Download Template Button
+sample_csv = "Criterion,Description,Max Score\nGreeting,Did the agent greet?,5\nEmpathy,Did the agent show empathy?,5"
+st.sidebar.download_button(
+    "📥 Download Template",
+    sample_csv,
+    "scorecard_template.csv",
+    "text/csv"
+)
+
 scorecard_file = st.sidebar.file_uploader(
-    "Select a scorecard CSV file",
-    type=["csv"],
-    help="CSV with columns: criterion, description"
+    "Select a scorecard file (CSV, XLSX, XLS)",
+    type=["csv", "xlsx", "xls"],
+    help="CSV or Excel with columns: criterion, criteria, question, or item"
 )
 
 if scorecard_file is not None:
     try:
-        scorecard_df = pd.read_csv(scorecard_file)
-        if "criterion" in scorecard_df.columns:
-            st.session_state.scorecard_criteria = scorecard_df["criterion"].tolist()
-            st.sidebar.success(f"✅ Loaded {len(st.session_state.scorecard_criteria)} criteria")
+        # Read file based on extension
+        if scorecard_file.name.endswith(('.xlsx', '.xls')):
+            scorecard_df = pd.read_excel(scorecard_file)
         else:
-            st.sidebar.error("❌ CSV must have 'criterion' column")
+            scorecard_df = pd.read_csv(scorecard_file)
+        
+        # Normalize column names: strip whitespace and convert to lowercase
+        scorecard_df.columns = scorecard_df.columns.str.strip().str.lower()
+        
+        # Check for criterion/criteria/question/item columns (case-insensitive)
+        valid_columns = {"criterion", "criteria", "question", "item"}
+        found_column = None
+        for col in scorecard_df.columns:
+            if col in valid_columns:
+                found_column = col
+                break
+        
+        if found_column:
+            st.session_state.scorecard_criteria = scorecard_df[found_column].tolist()
+            st.sidebar.success(f"✅ Loaded {len(st.session_state.scorecard_criteria)} criteria from '{found_column}' column")
+        else:
+            st.sidebar.error(f"❌ File must have one of these columns: {', '.join(valid_columns)}")
     except Exception as e:
-        st.sidebar.error(f"❌ Error reading CSV: {str(e)}")
+        st.sidebar.error(f"❌ Error reading file: {str(e)}")
 
 # Process Button
 st.sidebar.markdown("---")
